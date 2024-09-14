@@ -1,55 +1,59 @@
-import asyncio
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
-from fastapi.websockets import WebSocket
-from fastapi.middleware.cors import CORSMiddleware
+from typing import List
+from pydantic import BaseModel
+import uvicorn
 
 app = FastAPI()
 
-# CORS設定（クローム拡張からのリクエストを許可）
-origins = ["*"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 特定のドメインを許可したい場合はリストで指定
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# WebSocket接続を保持するためのリスト
+connections: List[WebSocket] = []
 
-# グローバル変数で再生時間を管理
-current_time = "00:00:00"
+class TimeData(BaseModel):
+    time: str
 
 @app.post("/update_time")
-async def update_time(time: dict):
-    global current_time
-    current_time = time['time']
+async def update_time(data: TimeData):
+    for connection in connections:
+        await connection.send_text(data.time)
     return {"message": "Time updated"}
-
-@app.get("/", response_class=HTMLResponse)
-async def get_time():
-    return """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Real-time Video Time</title>
-    </head>
-    <body>
-        <h1>Current Time: <span id="time"></span></h1>
-        <script>
-            const ws = new WebSocket('ws://localhost:8000/ws');
-            ws.onmessage = function(event) {
-                document.getElementById('time').textContent = event.data;
-            };
-        </script>
-    </body>
-    </html>
-    """
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    while True:
-        await websocket.send_text(current_time)
-        await asyncio.sleep(1)
+    connections.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"Received data from websocket: {data}")
+    except WebSocketDisconnect:
+        connections.remove(websocket)
+
+@app.get("/")
+async def get():
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Real-Time Time Display</title>
+        <script>
+            let ws;
+            function initWebSocket() {
+                ws = new WebSocket("wss://miaon.onrender.com/ws");
+                ws.onmessage = function(event) {
+                    document.getElementById("timeDisplay").innerText = "Current Time: " + event.data;
+                };
+            }
+            window.onload = initWebSocket;
+        </script>
+    </head>
+    <body>
+        <h1>Real-Time Time Display</h1>
+        <div id="timeDisplay">Current Time: Not Available</div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=80)
