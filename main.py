@@ -2,22 +2,19 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from typing import List
 from pydantic import BaseModel
-import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
 app = FastAPI()
 
 # CORSミドルウェアの設定
-orig_startup = "https://miaon.onrender.com"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[orig_startup],
+    allow_origins=["*"],  # ここを必要に応じて適切なURLに設定
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 
 # WebSocket接続を保持するためのリスト
 connections: List[WebSocket] = []
